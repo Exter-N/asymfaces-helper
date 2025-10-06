@@ -1,33 +1,42 @@
 ﻿using System.IO.Compression;
 using System.Text.Json;
 using Unfold;
+using static Unfold.Utility;
 
 SwitchToDirectory();
 
-try
+var masksPerRace = new Dictionary<ushort, int>();
+var redirectionsPerRace = new Dictionary<ushort, Dictionary<string, string>>();
+
+Console.WriteLine("Preparing...");
+
+foreach (var raceCode in AllRaceCodes())
 {
-    Directory.Delete("asymfaces_vanilla", true);
-}
-catch (DirectoryNotFoundException)
-{
-    // This block intentionally left blank.
+    masksPerRace.Add(raceCode, 0);
+    redirectionsPerRace.Add(raceCode, new());
+
+    DeleteDirectory($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}");
+    DeleteDirectory($"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}");
+
+    Directory.CreateDirectory($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}");
+    Directory.CreateDirectory($"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}");
 }
 
-try
+var allPaths = Directory.GetFiles("chara");
+
+foreach (var path in allPaths)
 {
-    Directory.Delete("asymfaces_vanilla_textures", true);
+    if (Path.GetExtension(path).ToLowerInvariant() is not ".tex")
+        continue;
+    var (textureRaceCode, _, textureSuffix) = TextureHandler.ParseTextureName(Path.GetFileNameWithoutExtension(path));
+    if (!string.Equals(textureSuffix, "mask", StringComparison.OrdinalIgnoreCase))
+        continue;
+    ++masksPerRace[textureRaceCode];
 }
-catch (DirectoryNotFoundException)
-{
-    // This block intentionally left blank.
-}
 
-Directory.CreateDirectory("asymfaces_vanilla");
-Directory.CreateDirectory("asymfaces_vanilla_textures");
+Console.WriteLine("Processing resources...");
 
-var redirections = new Dictionary<string, string>();
-
-foreach (var path in Directory.GetFiles("chara"))
+foreach (var path in allPaths)
 {
     switch (Path.GetExtension(path).ToLowerInvariant())
     {
@@ -35,10 +44,10 @@ foreach (var path in Directory.GetFiles("chara"))
             // This case intentionally left blank.
             break;
         case ".mtrl":
-            MaterialHandler.Process(path, redirections);
+            MaterialHandler.Process(path, redirectionsPerRace, masksPerRace);
             break;
         case ".tex":
-            TextureHandler.Process(path);
+            TextureHandler.Process(path, masksPerRace);
             break;
         case var ext:
             Console.WriteLine($"Unhandled extension {ext}");
@@ -51,31 +60,44 @@ var jsonSerializerOptions = new JsonSerializerOptions
     WriteIndented = true,
 };
 
-File.WriteAllText("asymfaces_vanilla/meta.json", JsonSerializer.Serialize(new ModMeta
+foreach (var raceCode in AllRaceCodes())
 {
-    Name = "AsymFaces - Vanilla-like Textures",
-    Author = "Spiswel, Nylfae",
-    Description = "A vanilla-like texture and material pack for AsymFaces.",
-    Version = "2.0",
-    Website = "https://dindon.org/",
-    ModTags = [
-        "asymfaces",
-    ],
-}, jsonSerializerOptions));
+    Console.WriteLine($"Packing for {GetDisplayRace(raceCode)} {GetDisplayGender(raceCode)}...");
+    File.WriteAllText($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}/meta.json",
+        JsonSerializer.Serialize(new ModMeta
+        {
+            Name = $"AsymFaces - Vanilla-like Textures - {GetDisplayRace(raceCode)} {GetDisplayGender(raceCode)}",
+            Author = "Spiswel, Nylfae",
+            Description =
+                $"A vanilla-like texture and material pack for AsymFaces, for {GetDisplayRace(raceCode)} {GetDisplayGender(raceCode).ToLowerInvariant()}s.",
+            Version = "2.0",
+            Website = "https://heliosphere.app/user/spiswel",
+            ModTags =
+            [
+                "asymfaces",
+                GetGender(raceCode),
+                GetRace(raceCode),
+            ],
+        }, jsonSerializerOptions));
 
-File.WriteAllText("asymfaces_vanilla/default_mod.json", JsonSerializer.Serialize(new DefaultMod
-{
-    Files = redirections,
-}, jsonSerializerOptions));
+    File.WriteAllText($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}/default_mod.json",
+        JsonSerializer.Serialize(new DefaultMod
+        {
+            Files = redirectionsPerRace[raceCode],
+        }, jsonSerializerOptions));
 
-File.Delete("asymfaces_vanilla.pmp");
-File.Delete("asymfaces_vanilla_textures.zip");
-ZipFile.CreateFromDirectory("asymfaces_vanilla", "asymfaces_vanilla.pmp", CompressionLevel.SmallestSize, false);
-ZipFile.CreateFromDirectory("asymfaces_vanilla_textures", "asymfaces_vanilla_textures.zip", CompressionLevel.SmallestSize, false);
+    File.Delete($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}.pmp");
+    File.Delete($"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}.zip");
+    ZipFile.CreateFromDirectory($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}",
+        $"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}.pmp", CompressionLevel.SmallestSize, false);
+    ZipFile.CreateFromDirectory($"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}",
+        $"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}.zip",
+        CompressionLevel.SmallestSize, false);
 #if !DEBUG
-Directory.Delete("asymfaces_vanilla", true);
-Directory.Delete("asymfaces_vanilla_textures", true);
+    DeleteDirectory($"asymfaces_vanilla_{GetGender(raceCode)}_{GetRace(raceCode)}");
+    DeleteDirectory($"asymfaces_vanilla_textures_{GetGender(raceCode)}_{GetRace(raceCode)}");
 #endif
+}
 
 return;
 
@@ -94,4 +116,16 @@ void SwitchToDirectory()
         throw new Exception("Cannot find chara directory");
 
     Environment.CurrentDirectory = path;
+}
+
+void DeleteDirectory(string path)
+{
+    try
+    {
+        Directory.Delete(path, true);
+    }
+    catch (DirectoryNotFoundException)
+    {
+        // This block intentionally left blank.
+    }
 }

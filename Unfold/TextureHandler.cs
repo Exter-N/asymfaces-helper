@@ -1,4 +1,3 @@
-using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -24,12 +23,9 @@ public static partial class TextureHandler
 
     private static int _slowBlocks = 0;
 
-    public static void Process(string path)
+    public static void Process(string path, Dictionary<ushort, int> masksPerRace)
     {
         var (textureRaceCode, textureFace, textureSuffix) = ParseTextureName(Path.GetFileNameWithoutExtension(path));
-        // if (textureRaceCode is not 1401 || textureFace is not 101)
-        //     return;
-
         var isNormal = string.Equals(textureSuffix, "norm", StringComparison.OrdinalIgnoreCase);
 
         var originalTexture = File.ReadAllBytes(path);
@@ -60,7 +56,7 @@ public static partial class TextureHandler
             if (_slowBlocks > 0)
             {
                 Console.WriteLine(
-                    $"{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}_{textureFace:D4}_{textureSuffix}: mip{i}: {_slowBlocks} slow blocks");
+                    $"{GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}: mip{i}: {_slowBlocks} slow blocks");
             }
         }
 
@@ -81,10 +77,10 @@ public static partial class TextureHandler
 
         header.MipCount = (byte)((header.MipCount & 0x80) | newSurfaces.Count);
 
-        Directory.CreateDirectory("asymfaces_vanilla/textures");
+        Directory.CreateDirectory($"asymfaces_vanilla_{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}/textures");
         using (var newTexture =
                File.Create(
-                   $"asymfaces_vanilla/textures/{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}_{textureFace:D4}_{textureSuffix}.tex"))
+                   $"asymfaces_vanilla_{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}/textures/{GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}.tex"))
         {
             newTexture.Write(MemoryMarshal.AsBytes(new ReadOnlySpan<Header>(ref header)));
             foreach (var surface in newSurfaces)
@@ -93,7 +89,7 @@ public static partial class TextureHandler
 
         using (var newTexture =
                File.Create(
-                   $"asymfaces_vanilla_textures/{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}_{textureFace:D4}_{textureSuffix}.dds"))
+                   $"asymfaces_vanilla_textures_{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}/{GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}.dds"))
         {
             using var writer = new BinaryWriter(newTexture, Encoding.UTF8, true);
             writer.Write(0x20534444u);
@@ -128,7 +124,7 @@ public static partial class TextureHandler
         }
     }
 
-    private static (ushort RaceCode, ushort Face, string Suffix) ParseTextureName(string name)
+    public static (ushort RaceCode, ushort Face, string Suffix) ParseTextureName(string name)
     {
         var parsedName = TextureNameRegex().Match(name);
         if (!parsedName.Success)
@@ -138,8 +134,33 @@ public static partial class TextureHandler
             parsedName.Groups[3].Value);
     }
 
-    [GeneratedRegex(@"c(\d{4})f(\d{4})_fac_(.*)", RegexOptions.Singleline)]
+    [GeneratedRegex(@"^c(\d{4})f(\d{4})_fac_(.*)$", RegexOptions.Singleline)]
     private static partial Regex TextureNameRegex();
+
+    public static bool TryParseTexturePath(string path, out ushort raceCode, out ushort face, out string suffix)
+    {
+        var parsedPath = TexturePathRegex().Match(path);
+        if (!parsedPath.Success)
+        {
+            raceCode = 0;
+            face = 0;
+            suffix = string.Empty;
+            return false;
+        }
+
+        raceCode = ushort.Parse(parsedPath.Groups[1].Value);
+        face = ushort.Parse(parsedPath.Groups[2].Value);
+        suffix = parsedPath.Groups[3].Value;
+        return true;
+    }
+
+    [GeneratedRegex(@"chara/human/c(\d{4})/obj/face/f(\d{4})/texture/c\1f\2_fac_([^.]*)\.tex", RegexOptions.Singleline)]
+    private static partial Regex TexturePathRegex();
+
+    public static string GenerateAsymTextureName(ushort raceCode, ushort face, string suffix, Dictionary<ushort, int> masksPerRace)
+        => string.Equals(suffix, "mask", StringComparison.OrdinalIgnoreCase) && masksPerRace[raceCode] == 1
+            ? $"{GetGender(raceCode)}_{GetRace(raceCode)}_{suffix}"
+            : $"{GetGender(raceCode)}_{GetRace(raceCode)}_{face:D3}_{suffix}";
 
     private static (int Width, int Height) CalculateSurfaceDimensions(in Header header, int mip)
         => ((header.Width + (1 << mip) - 1) >> mip, (header.Height + (1 << mip) - 1) >> mip);

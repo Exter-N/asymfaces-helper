@@ -7,12 +7,15 @@ namespace Unfold;
 
 public static partial class MaterialHandler
 {
-    public static void Process(string path, Dictionary<string, string> redirections)
+    public static void Process(string path, Dictionary<ushort, Dictionary<string, string>> redirectionsPerRace, Dictionary<ushort, int> masksPerRace)
     {
-        var (materialRaceCode, materialFace) = ParseMaterialName(Path.GetFileNameWithoutExtension(path));
+        var (materialRaceCode, materialFace, materialSuffix) = ParseMaterialName(Path.GetFileNameWithoutExtension(path));
+        if (materialSuffix is "fac_a")
+            materialSuffix = "fac_asym";
+        var redirections = redirectionsPerRace[materialRaceCode];
         redirections.TryAdd(
-            $"chara/human/c{materialRaceCode:D4}/obj/face/f{materialFace:D4}/material/mt_c{materialRaceCode:D4}f{materialFace:D4}_fac_asym.mtrl",
-            $"materials\\mt_c{materialRaceCode:D4}f{materialFace:D4}_fac_asym.mtrl");
+            $"chara/human/c{materialRaceCode:D4}/obj/face/f{materialFace:D4}/material/mt_c{materialRaceCode:D4}f{materialFace:D4}_{materialSuffix}.mtrl",
+            $"materials\\mt_c{materialRaceCode:D4}f{materialFace:D4}_{materialSuffix}.mtrl");
 
         var originalMaterial = File.ReadAllBytes(path);
         var position = 0;
@@ -22,16 +25,31 @@ public static partial class MaterialHandler
         var attributeSets = Read<AttributeSet>(originalMaterial, header.UvSetCount + header.ColorSetCount, ref position);
         var stringsPosition = position;
         var strings = DecodeStrings(Read<byte>(originalMaterial, header.StringTableSize, ref position));
+        var tailPosition = position;
+        var additionalData = Read<byte>(originalMaterial, header.AdditionalDataSize, ref position);
+        var dataSet = Read<byte>(originalMaterial, header.DataSetSize, ref position);
+        ref var shaderHeader = ref Read<ShaderHeader>(originalMaterial, 1, ref position)[0];
+        var shaderKeys = Read<ShaderKey>(originalMaterial, shaderHeader.ShaderKeyCount, ref position);
+        var constants = Read<Constant>(originalMaterial, shaderHeader.ConstantCount, ref position);
+        var samplers = Read<Sampler>(originalMaterial, shaderHeader.SamplerCount, ref position);
+        var valueList = Read<byte>(originalMaterial, shaderHeader.ShaderValueListSize, ref position);
+
+        if (!TryFind(constants, c => c.NameCrc == 0x2E60B071u, out var tileScaleConstant))
+            throw new Exception($"Cannot find g_TileScale constant in {path}");
 
         foreach (var offset in strings.Keys.ToList())
         {
-            if (!TryParseTexturePath(strings[offset], out var textureRaceCode, out var textureFace, out var textureSuffix))
+            if (!TextureHandler.TryParseTexturePath(strings[offset], out var textureRaceCode, out var textureFace,
+                    out var textureSuffix))
                 continue;
+            if (textureRaceCode != materialRaceCode)
+                throw new Exception(
+                    $"Race code mismatch, material: {GetGender(materialRaceCode)}_{GetRace(materialRaceCode)}, texture: {GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}");
 
-            strings[offset] = $"chara/asymfaces/{GetGender(materialRaceCode)}_{GetRace(materialRaceCode)}_{materialFace:D4}_{textureSuffix}.tex";
+            strings[offset] = $"chara/asymfaces/{TextureHandler.GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}.tex";
             redirections.TryAdd(
-                $"chara/asymfaces/{GetGender(materialRaceCode)}_{GetRace(materialRaceCode)}_{materialFace:D4}_{textureSuffix}.tex",
-                $"textures\\{GetGender(textureRaceCode)}_{GetRace(textureRaceCode)}_{textureFace:D4}_{textureSuffix}.tex");
+                $"chara/asymfaces/{TextureHandler.GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}.tex",
+                $"textures\\{TextureHandler.GenerateAsymTextureName(textureRaceCode, textureFace, textureSuffix, masksPerRace)}.tex");
         }
 
         var (newStrings, mappings) = EncodeStrings(strings);
@@ -41,45 +59,28 @@ public static partial class MaterialHandler
             texture.PathOffset = mappings[texture.PathOffset];
         foreach (ref var attributeSet in attributeSets)
             attributeSet.NameOffset = mappings[attributeSet.NameOffset];
+        header.FileSize = (ushort)(stringsPosition + newStrings.Length + originalMaterial.Length - tailPosition);
+        var tileScale = MemoryMarshal.Cast<byte, float>(valueList.Slice(tileScaleConstant.ByteOffset, tileScaleConstant.ByteSize));
+        tileScale[0] *= 2.0f;
 
-        Directory.CreateDirectory("asymfaces_vanilla/materials");
-        using var newMaterial = File.Create($"asymfaces_vanilla/materials/mt_c{materialRaceCode:D4}f{materialFace:D4}_fac_asym.mtrl");
+        Directory.CreateDirectory($"asymfaces_vanilla_{GetGender(materialRaceCode)}_{GetRace(materialRaceCode)}/materials");
+        using var newMaterial = File.Create($"asymfaces_vanilla_{GetGender(materialRaceCode)}_{GetRace(materialRaceCode)}/materials/mt_c{materialRaceCode:D4}f{materialFace:D4}_{materialSuffix}.mtrl");
         newMaterial.Write(originalMaterial, 0, stringsPosition);
         newMaterial.Write(newStrings, 0, newStrings.Length);
-        newMaterial.Write(originalMaterial, position, originalMaterial.Length - position);
+        newMaterial.Write(originalMaterial, tailPosition, originalMaterial.Length - tailPosition);
     }
 
-    private static (ushort RaceCode, ushort Face) ParseMaterialName(string name)
+    public static (ushort RaceCode, ushort Face, string Suffix) ParseMaterialName(string name)
     {
         var parsedName = MaterialNameRegex().Match(name);
         if (!parsedName.Success)
             throw new Exception($"Cannot parse material name {name}");
 
-        return (ushort.Parse(parsedName.Groups[1].Value), ushort.Parse(parsedName.Groups[2].Value));
+        return (ushort.Parse(parsedName.Groups[1].Value), ushort.Parse(parsedName.Groups[2].Value), parsedName.Groups[3].Value);
     }
 
-    [GeneratedRegex(@"mt_c(\d{4})f(\d{4})_fac_a")]
+    [GeneratedRegex(@"^mt_c(\d{4})f(\d{4})_(.*)$")]
     private static partial Regex MaterialNameRegex();
-
-    private static bool TryParseTexturePath(string path, out ushort raceCode, out ushort face, out string suffix)
-    {
-        var parsedPath = TexturePathRegex().Match(path);
-        if (!parsedPath.Success)
-        {
-            raceCode = 0;
-            face = 0;
-            suffix = string.Empty;
-            return false;
-        }
-
-        raceCode = ushort.Parse(parsedPath.Groups[1].Value);
-        face = ushort.Parse(parsedPath.Groups[2].Value);
-        suffix = parsedPath.Groups[3].Value;
-        return true;
-    }
-
-    [GeneratedRegex(@"chara/human/c(\d{4})/obj/face/f(\d{4})/texture/c\1f\2_fac_([^.]*)\.tex", RegexOptions.Singleline)]
-    private static partial Regex TexturePathRegex();
 
     private static Dictionary<ushort, string> DecodeStrings(ReadOnlySpan<byte> buffer)
     {
@@ -153,4 +154,38 @@ public static partial class MaterialHandler
         public ushort NameOffset;
         public ushort Index;
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ShaderHeader
+    {
+        public ushort ShaderValueListSize;
+        public ushort ShaderKeyCount;
+        public ushort ConstantCount;
+        public ushort SamplerCount;
+        public uint Flags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ShaderKey
+    {
+        public uint KeyCrc;
+        public uint ValueCrc;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Constant
+    {
+        public uint NameCrc;
+        public ushort ByteOffset;
+        public ushort ByteSize;
+    };
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Sampler {
+        public uint NameCrc;
+        public uint Flags;
+        public byte TextureIndex;
+        private byte _padding0;
+        private ushort _padding1;
+    };
 }

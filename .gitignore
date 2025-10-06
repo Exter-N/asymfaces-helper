@@ -1,8 +1,12 @@
 chara/
 asymfaces_vanilla/
+asymfaces_vanilla_*/
 asymfaces_vanilla_textures/
+asymfaces_vanilla_textures_*/
 asymfaces_vanilla.pmp
+asymfaces_vanilla_*.pmp
 asymfaces_vanilla_textures.zip
+asymfaces_vanilla_textures_*.zip
 obj/
 bin/
 *.user
