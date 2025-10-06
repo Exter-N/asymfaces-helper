@@ -1,0 +1,37 @@
+name: .NET Build
+
+on:
+  push:
+    branches: '*'
+    tags-ignore: '*'
+  pull_request:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v1
+        with:
+          dotnet-version: '9.x.x'
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build tool
+        run: |
+          dotnet build --configuration Release --nologo
+
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifact
+          path: |
+            ./Unfold/bin/Release/net9.0/*
+
+      - name: Run tests
+        run: dotnet test

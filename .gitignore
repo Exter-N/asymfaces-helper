@@ -1,0 +1,8 @@
+chara/
+asymfaces_vanilla/
+asymfaces_vanilla_textures/
+asymfaces_vanilla.pmp
+asymfaces_vanilla_textures.zip
+obj/
+bin/
+*.user

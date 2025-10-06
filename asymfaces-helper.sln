@@ -1,0 +1,22 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unfold", "Unfold\Unfold.csproj", "{ADC44341-5D9C-4F46-A9B0-6FFC271C67F5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Unfold.Tests", "Unfold.Tests\Unfold.Tests.csproj", "{2F55F991-0B62-48C3-B0EE-A367EDD9D8C5}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{ADC44341-5D9C-4F46-A9B0-6FFC271C67F5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{ADC44341-5D9C-4F46-A9B0-6FFC271C67F5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{ADC44341-5D9C-4F46-A9B0-6FFC271C67F5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{ADC44341-5D9C-4F46-A9B0-6FFC271C67F5}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2F55F991-0B62-48C3-B0EE-A367EDD9D8C5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2F55F991-0B62-48C3-B0EE-A367EDD9D8C5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2F55F991-0B62-48C3-B0EE-A367EDD9D8C5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2F55F991-0B62-48C3-B0EE-A367EDD9D8C5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
