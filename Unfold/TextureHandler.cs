@@ -160,7 +160,7 @@ public static partial class TextureHandler
     public static string GenerateAsymTextureName(ushort raceCode, ushort face, string suffix, Dictionary<ushort, int> masksPerRace)
         => string.Equals(suffix, "mask", StringComparison.OrdinalIgnoreCase) && masksPerRace[raceCode] == 1
             ? $"{GetGender(raceCode)}_{GetRace(raceCode)}_{suffix}"
-            : $"{GetGender(raceCode)}_{GetRace(raceCode)}_{face:D3}_{suffix}";
+            : $"{GetGender(raceCode)}_{GetRace(raceCode)}_f{face:D3}_{suffix}";
 
     private static (int Width, int Height) CalculateSurfaceDimensions(in Header header, int mip)
         => ((header.Width + (1 << mip) - 1) >> mip, (header.Height + (1 << mip) - 1) >> mip);
